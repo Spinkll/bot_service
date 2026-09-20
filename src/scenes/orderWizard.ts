@@ -1,26 +1,36 @@
-import { Scenes, Markup } from 'telegraf';
+import { Scenes } from 'telegraf';
 import { BotContext } from '../types/context';
 import {
-  CATEGORIES,
-  BUDGETS,
   MESSAGES,
-  MAIN_MENU_BUTTONS,
+  getLanguage,
   getCategoryReplyKeyboard,
   getBudgetReplyKeyboard,
   getContactReplyKeyboard,
   getCancelReplyKeyboard,
   getMainMenuKeyboard,
+  getAllButtonVariants,
+  findCategory,
+  findBudget,
   formatAdminMessage,
 } from '../config/survey';
 import { config } from '../config/env';
 
 export const ORDER_WIZARD_SCENE_ID = 'ORDER_WIZARD_SCENE';
 
-async function initAndPromptCategory(ctx: BotContext) {
+function isCancelInput(text?: string): boolean {
+  if (!text) return false;
+  const cancelVariants = getAllButtonVariants('cancel');
+  return cancelVariants.includes(text) || text === '/cancel';
+}
+
+export async function initAndPromptCategory(ctx: BotContext) {
+  const lang = getLanguage(ctx);
+  const msgs = MESSAGES[lang];
+
   ctx.scene.session.orderData = {};
   ctx.wizard.selectStep(0);
 
-  await ctx.reply(MESSAGES.welcome, getCategoryReplyKeyboard());
+  await ctx.reply(msgs.welcome, getCategoryReplyKeyboard(lang));
   return ctx.wizard.next();
 }
 
@@ -34,82 +44,79 @@ export const orderWizard = new Scenes.WizardScene<BotContext>(
 
   // Step 1: Handle Category selection & ask for Description
   async (ctx) => {
+    const lang = getLanguage(ctx);
+    const msgs = MESSAGES[lang];
+
     // Check if user clicked cancel
-    if (
-      ctx.message &&
-      'text' in ctx.message &&
-      ctx.message.text === MAIN_MENU_BUTTONS.cancel
-    ) {
-      await ctx.reply(MESSAGES.cancelled, getMainMenuKeyboard());
+    if (ctx.message && 'text' in ctx.message && isCancelInput(ctx.message.text)) {
+      await ctx.reply(msgs.cancelled, getMainMenuKeyboard(lang));
       return ctx.scene.leave();
     }
 
-    let selectedCategory: string | undefined;
+    let selectedCategoryName: string | undefined;
+    let selectedCategoryId: string | undefined;
 
     // Check text input from bottom keyboard
     if (ctx.message && 'text' in ctx.message) {
       const text = ctx.message.text.trim();
-      const found = CATEGORIES.find(
-        (c) => c.label === text || c.label.toLowerCase() === text.toLowerCase()
-      );
+      const found = findCategory(text, lang);
       if (found) {
-        selectedCategory = found.label;
+        selectedCategoryName = found.label;
+        selectedCategoryId = found.id;
       }
     }
 
     // Fallback for inline button if any
-    if (!selectedCategory && ctx.callbackQuery && 'data' in ctx.callbackQuery) {
+    if (!selectedCategoryName && ctx.callbackQuery && 'data' in ctx.callbackQuery) {
       const selectedId = ctx.callbackQuery.data;
-      const found = CATEGORIES.find((c) => c.id === selectedId);
+      const found = findCategory(selectedId, lang);
       if (found) {
         await ctx.answerCbQuery();
-        selectedCategory = found.label;
+        selectedCategoryName = found.label;
+        selectedCategoryId = found.id;
       }
     }
 
-    if (selectedCategory) {
+    if (selectedCategoryName) {
       ctx.scene.session.orderData = {
         ...ctx.scene.session.orderData,
-        category: selectedCategory,
+        category: selectedCategoryName,
+        categoryId: selectedCategoryId,
       };
 
       await ctx.reply(
-        `Выбрано: <b>${selectedCategory}</b>\n\n${MESSAGES.descriptionPrompt}`,
+        `${msgs.categorySelected} <b>${selectedCategoryName}</b>\n\n${msgs.descriptionPrompt}`,
         {
           parse_mode: 'HTML',
-          ...getCancelReplyKeyboard(),
+          ...getCancelReplyKeyboard(lang),
         }
       );
       return ctx.wizard.next();
     }
 
-    // If user sent invalid input, prompt again with bottom keyboard
-    await ctx.reply(MESSAGES.errors.categoryInvalid, getCategoryReplyKeyboard());
+    // If user sent invalid input, prompt again with keyboard
+    await ctx.reply(msgs.errors.categoryInvalid, getCategoryReplyKeyboard(lang));
   },
 
   // Step 2: Handle Description & ask for Budget
   async (ctx) => {
+    const lang = getLanguage(ctx);
+    const msgs = MESSAGES[lang];
+
     // Check if user clicked cancel
-    if (
-      ctx.message &&
-      'text' in ctx.message &&
-      ctx.message.text === MAIN_MENU_BUTTONS.cancel
-    ) {
-      await ctx.reply(MESSAGES.cancelled, getMainMenuKeyboard());
+    if (ctx.message && 'text' in ctx.message && isCancelInput(ctx.message.text)) {
+      await ctx.reply(msgs.cancelled, getMainMenuKeyboard(lang));
       return ctx.scene.leave();
     }
 
     if (!ctx.message || !('text' in ctx.message)) {
-      await ctx.reply(MESSAGES.errors.descriptionInvalid, getCancelReplyKeyboard());
+      await ctx.reply(msgs.errors.descriptionInvalid, getCancelReplyKeyboard(lang));
       return;
     }
 
     const description = ctx.message.text.trim();
     if (description.length < 5) {
-      await ctx.reply(
-        'Пожалуйста, опишите задачу чуть подробнее (минимум несколько слов) ✍️',
-        getCancelReplyKeyboard()
-      );
+      await ctx.reply(msgs.descriptionTooShort, getCancelReplyKeyboard(lang));
       return;
     }
 
@@ -118,73 +125,73 @@ export const orderWizard = new Scenes.WizardScene<BotContext>(
       description,
     };
 
-    await ctx.reply(MESSAGES.budgetPrompt, getBudgetReplyKeyboard());
+    await ctx.reply(msgs.budgetPrompt, getBudgetReplyKeyboard(lang));
     return ctx.wizard.next();
   },
 
   // Step 3: Handle Budget & ask for Contact
   async (ctx) => {
+    const lang = getLanguage(ctx);
+    const msgs = MESSAGES[lang];
+
     // Check if user clicked cancel
-    if (
-      ctx.message &&
-      'text' in ctx.message &&
-      ctx.message.text === MAIN_MENU_BUTTONS.cancel
-    ) {
-      await ctx.reply(MESSAGES.cancelled, getMainMenuKeyboard());
+    if (ctx.message && 'text' in ctx.message && isCancelInput(ctx.message.text)) {
+      await ctx.reply(msgs.cancelled, getMainMenuKeyboard(lang));
       return ctx.scene.leave();
     }
 
-    let selectedBudget: string | undefined;
+    let selectedBudgetName: string | undefined;
+    let selectedBudgetId: string | undefined;
 
     // Check text input from bottom keyboard
     if (ctx.message && 'text' in ctx.message) {
       const text = ctx.message.text.trim();
-      const found = BUDGETS.find(
-        (b) => b.label === text || b.label.toLowerCase() === text.toLowerCase()
-      );
+      const found = findBudget(text, lang);
       if (found) {
-        selectedBudget = found.label;
+        selectedBudgetName = found.label;
+        selectedBudgetId = found.id;
       }
     }
 
     // Fallback for inline button if any
-    if (!selectedBudget && ctx.callbackQuery && 'data' in ctx.callbackQuery) {
+    if (!selectedBudgetName && ctx.callbackQuery && 'data' in ctx.callbackQuery) {
       const selectedId = ctx.callbackQuery.data;
-      const found = BUDGETS.find((b) => b.id === selectedId);
+      const found = findBudget(selectedId, lang);
       if (found) {
         await ctx.answerCbQuery();
-        selectedBudget = found.label;
+        selectedBudgetName = found.label;
+        selectedBudgetId = found.id;
       }
     }
 
-    if (selectedBudget) {
+    if (selectedBudgetName) {
       ctx.scene.session.orderData = {
         ...ctx.scene.session.orderData,
-        budget: selectedBudget,
+        budget: selectedBudgetName,
+        budgetId: selectedBudgetId,
       };
 
       await ctx.reply(
-        `Бюджет: <b>${selectedBudget}</b>\n\n${MESSAGES.contactPrompt}`,
+        `${msgs.budgetSelected} <b>${selectedBudgetName}</b>\n\n${msgs.contactPrompt}`,
         {
           parse_mode: 'HTML',
-          ...getContactReplyKeyboard(),
+          ...getContactReplyKeyboard(lang),
         }
       );
       return ctx.wizard.next();
     }
 
-    await ctx.reply(MESSAGES.errors.budgetInvalid, getBudgetReplyKeyboard());
+    await ctx.reply(msgs.errors.budgetInvalid, getBudgetReplyKeyboard(lang));
   },
 
   // Step 4: Handle Contact & finalize submission
   async (ctx) => {
-    // Check if user pressed cancel button on contact keyboard
-    if (
-      ctx.message &&
-      'text' in ctx.message &&
-      ctx.message.text === MAIN_MENU_BUTTONS.cancel
-    ) {
-      await ctx.reply(MESSAGES.cancelled, getMainMenuKeyboard());
+    const lang = getLanguage(ctx);
+    const msgs = MESSAGES[lang];
+
+    // Check if user clicked cancel
+    if (ctx.message && 'text' in ctx.message && isCancelInput(ctx.message.text)) {
+      await ctx.reply(msgs.cancelled, getMainMenuKeyboard(lang));
       return ctx.scene.leave();
     }
 
@@ -195,14 +202,14 @@ export const orderWizard = new Scenes.WizardScene<BotContext>(
         const phone = ctx.message.contact.phone_number;
         const firstName = ctx.message.contact.first_name || '';
         const lastName = ctx.message.contact.last_name || '';
-        contactInfo = `Телефон: +${phone.replace(/^\+/, '')} (${[firstName, lastName].filter(Boolean).join(' ')})`;
+        contactInfo = `${msgs.phonePrefix}: +${phone.replace(/^\+/, '')} (${[firstName, lastName].filter(Boolean).join(' ')})`;
       } else if ('text' in ctx.message && ctx.message.text) {
         contactInfo = ctx.message.text.trim();
       }
     }
 
     if (!contactInfo) {
-      await ctx.reply(MESSAGES.errors.contactInvalid, getContactReplyKeyboard());
+      await ctx.reply(msgs.errors.contactInvalid, getContactReplyKeyboard(lang));
       return;
     }
 
@@ -215,7 +222,7 @@ export const orderWizard = new Scenes.WizardScene<BotContext>(
     const orderData = ctx.scene.session.orderData;
 
     // Send confirmation to the client and show interactive bottom menu
-    await ctx.reply(MESSAGES.success, getMainMenuKeyboard());
+    await ctx.reply(msgs.success, getMainMenuKeyboard(lang));
 
     // Send formatted lead notification to admin chat
     if (from && orderData.category && orderData.description && orderData.budget) {
@@ -228,6 +235,7 @@ export const orderWizard = new Scenes.WizardScene<BotContext>(
         username: from.username,
         firstName: from.first_name,
         lastName: from.last_name,
+        language: lang,
       });
 
       try {
@@ -248,12 +256,14 @@ export const orderWizard = new Scenes.WizardScene<BotContext>(
 
 // Allow user to cancel at any moment from within the scene
 orderWizard.command('cancel', async (ctx) => {
-  await ctx.reply(MESSAGES.cancelled, getMainMenuKeyboard());
+  const lang = getLanguage(ctx);
+  await ctx.reply(MESSAGES[lang].cancelled, getMainMenuKeyboard(lang));
   return ctx.scene.leave();
 });
 
-orderWizard.hears(MAIN_MENU_BUTTONS.cancel, async (ctx) => {
-  await ctx.reply(MESSAGES.cancelled, getMainMenuKeyboard());
+orderWizard.hears(getAllButtonVariants('cancel'), async (ctx) => {
+  const lang = getLanguage(ctx);
+  await ctx.reply(MESSAGES[lang].cancelled, getMainMenuKeyboard(lang));
   return ctx.scene.leave();
 });
 
@@ -262,6 +272,6 @@ orderWizard.command('start', async (ctx) => {
   return initAndPromptCategory(ctx);
 });
 
-orderWizard.hears(MAIN_MENU_BUTTONS.newOrder, async (ctx) => {
+orderWizard.hears(getAllButtonVariants('newOrder'), async (ctx) => {
   return initAndPromptCategory(ctx);
 });
