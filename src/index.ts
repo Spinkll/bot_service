@@ -1,3 +1,4 @@
+import { IncomingMessage, ServerResponse } from 'http';
 import { createBot } from './bot';
 import { config } from './config/env';
 
@@ -29,7 +30,7 @@ async function main() {
           path: config.webhookPath,
           port: config.port,
           secretToken: config.webhookSecret || undefined,
-          cb: (req, res) => {
+          cb: (req: IncomingMessage, res: ServerResponse) => {
             if (req.url === '/' || req.url === '/health') {
               res.writeHead(200, { 'Content-Type': 'application/json' });
               res.end(
