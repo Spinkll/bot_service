@@ -57,7 +57,7 @@ async function main() {
     } else {
       // Local development or polling fallback
       console.log('🤖 Запуск Telegram-бота в режиме Polling (локальная разработка)...');
-      await bot.launch();
+      await bot.launch({ dropPendingUpdates: true });
       console.log('✅ Бот успешно запущен в режиме Polling и готов к приёму заявок!');
     }
   } catch (error) {
